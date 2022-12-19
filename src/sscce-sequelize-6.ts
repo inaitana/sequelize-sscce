@@ -21,14 +21,50 @@ export async function run() {
     },
   });
 
-  class Foo extends Model {}
 
-  Foo.init({
-    name: DataTypes.TEXT,
+  class Task extends Model {}
+
+  Task.init({
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    projectId: {
+      type: DataTypes.INTEGER
+    },
+    type: {
+      type: DataTypes.INTEGER
+    }
   }, {
     sequelize,
-    modelName: 'Foo',
+    defaultScope: {
+      where: {
+        type: 1
+      }
+    }
   });
+
+  Task.addScope("typetwo", {
+    where: {
+      type: 2
+    }
+  });
+
+  class Project extends Model {}
+
+  Project.init({
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    }
+  }, {
+    sequelize
+  });
+
+
+  Project.hasMany(Task, { foreignKey: "projectId" });
 
   // You can use sinon and chai assertions directly in your SSCCE.
   const spy = sinon.spy();
@@ -36,6 +72,74 @@ export async function run() {
   await sequelize.sync({ force: true });
   expect(spy).to.have.been.called;
 
-  console.log(await Foo.create({ name: 'TS foo' }));
-  expect(await Foo.count()).to.equal(1);
+  await Project.findOrCreate({ where: { id: 1 } });
+  await Task.findOrCreate({ where: { id: 1 }, defaults: { projectId: 1, type: 1 } });
+  await Task.unscoped().findOrCreate({ where: { id: 2 }, defaults: { projectId: 1, type: 2 } });
+  await Task.unscoped().findOrCreate({ where: { id: 3 }, defaults: { projectId: 1, type: 3 } });
+  expect(await Project.count()).to.equal(1);
+  expect(await Task.count()).to.equal(1);
+  expect(await Task.unscoped().count()).to.equal(3);
+
+  await Project.findAll({
+    include: {
+      model: Task
+    }
+  }).then(projects => {
+    console.log('#1')
+    expect(projects.length, '#1').to.equal(1);
+    expect(projects[0].get().Tasks.length, '#1').to.equal(1);
+  });
+
+  await Project.findAll({
+    include: {
+      model: Task.unscoped()
+    }
+  }).then(projects => {
+    console.log('#2')
+    expect(projects.length, '#2').to.equal(1);
+    expect(projects[0].get().Tasks.length, '#2').to.equal(3);
+  });
+
+  await Project.findAll({
+    include: {
+      model: Task.scope("typetwo")
+    }
+  }).then(projects => {
+    console.log('#3')
+    expect(projects.length, '#3').to.equal(1);
+    expect(projects[0].get().Tasks.length, '#3').to.equal(1);
+  });
+
+  await Project.findAll({
+    include: {
+      model: Task,
+      separate: true
+    }
+  }).then(projects => {
+    console.log('#4')
+    expect(projects.length, '#4').to.equal(1);
+    expect(projects[0].get().Tasks.length, '#4').to.equal(1);
+  });
+
+  // #5
+  await Project.findAll({
+    include: {
+      model: Task.unscoped(),
+      separate: true
+    }
+  }).then(projects => {
+    expect(projects.length).to.equal(1, '#5');
+    expect(projects[0].get().Tasks.length).to.equal(3, '#5');
+  });
+
+  // #6
+  await Project.findAll({
+    include: {
+      model: Task.scope("typetwo"),
+      separate: true
+    }
+  }).then(projects => {
+    expect(projects.length, '#6').to.equal(1);
+    expect(projects[0].get().Tasks.length, '#6').to.equal(1);
+  });
 }
